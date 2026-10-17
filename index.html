@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>World Map — Interactive Atlas</title>
+  <link rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #101820;
+      color: white;
+    }
+    header {
+      min-height: 66px;
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      background: #172735;
+    }
+    header strong { font-size: 19px; }
+    header span { color: #a9c6d8; font-size: 12px; }
+    .search { display: flex; gap: 6px; margin-left: auto; }
+    input, button {
+      padding: 10px 12px;
+      border: 1px solid #456072;
+      border-radius: 7px;
+      font-size: 14px;
+    }
+    input { width: 220px; max-width: 55vw; }
+    button { cursor: pointer; background: #2379a9; color: white; }
+    button:hover { background: #3298cc; }
+    #map { height: calc(100vh - 112px); min-height: 360px; }
+    footer {
+      height: 46px;
+      padding: 14px 18px;
+      font-size: 12px;
+      color: #bed0dc;
+      background: #172735;
+    }
+    @media (max-width: 600px) {
+      header { gap: 10px; }
+      .search { margin-left: 0; width: 100%; }
+      input { flex: 1; width: 100px; max-width: none; }
+      #map { height: calc(100vh - 150px); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <strong>🌍 WORLD MAP</strong><br>
+      <span>Interactive world atlas</span>
+    </div>
+    <form class="search" id="searchForm">
+      <input id="place" placeholder="Search city or country..."
+        aria-label="Search for a place">
+      <button type="submit">Search</button>
+      <button type="button" id="locate">My location</button>
+    </form>
+  </header>
+
+  <div id="map"></div>
+
+  <footer id="status">
+    Ready · Move the map, zoom in, or search for a place.
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map', {
+      worldCopyJump: true
+    }).setView([25, 10], 2);
+
+    const streets = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }
+    ).addTo(map);
+
+    const satellite = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        maxZoom: 18,
+        attribution: 'Tiles &copy; Esri'
+      }
+    );
+
+    L.control.layers({
+      'Street map': streets,
+      'Satellite imagery': satellite
+    }).addTo(map);
+
+    L.control.scale({ imperial: false }).addTo(map);
+
+    let marker;
+    const status = document.getElementById('status');
+
+    document.getElementById('searchForm').addEventListener(
+      'submit', async function(event) {
+        event.preventDefault();
+        const query = document.getElementById('place').value.trim();
+        if (!query) return;
+
+        status.textContent = 'Searching...';
+
+        try {
+          const url =
+            'https://nominatim.openstreetmap.org/search?format=json&limit=1&q='
+            + encodeURIComponent(query);
+
+          const response = await fetch(url, {
+            headers: { 'Accept': 'application/json' }
+          });
+          if (!response.ok) throw new Error('Search unavailable');
+
+          const results = await response.json();
+          if (!results.length) {
+            status.textContent = 'No place found. Try another name.';
+            return;
+          }
+
+          const place = results[0];
+          const lat = Number(place.lat);
+          const lon = Number(place.lon);
+
+          map.setView([lat, lon], 10);
+          if (marker) map.removeLayer(marker);
+          marker = L.marker([lat, lon]).addTo(map)
+            .bindPopup(place.display_name).openPopup();
+
+          status.textContent =
+            place.display_name + ' · ' +
+            lat.toFixed(4) + ', ' + lon.toFixed(4);
+        } catch (error) {
+          status.textContent =
+            'Search failed. Check your internet connection and retry.';
+        }
+      }
+    );
+
+    document.getElementById('locate').addEventListener('click', () => {
+      if (!navigator.geolocation) {
+        status.textContent = 'Location is not supported by this browser.';
+        return;
+      }
+      status.textContent = 'Getting your location...';
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+          map.setView([lat, lon], 12);
+          if (marker) map.removeLayer(marker);
+          marker = L.marker([lat, lon]).addTo(map)
+            .bindPopup('Your approximate device location').openPopup();
+          status.textContent =
+            'Location · ' + lat.toFixed(4) + ', ' + lon.toFixed(4);
+        },
+        () => {
+          status.textContent =
+            'Location unavailable. Allow location access in Chrome.';
+        }
+      );
+    });
+
+    map.on('mousemove', event => {
+      status.textContent =
+        'Latitude: ' + event.latlng.lat.toFixed(3) +
+        ' · Longitude: ' + event.latlng.lng.toFixed(3);
+    });
+  </script>
+</body>
+</html>
